@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Table Hockey</title>
+<style>
+  :root { --bg:#0b0f18; --panel:rgba(12,18,32,.8); --line:rgba(160,190,255,.24); --txt:#eaf1ff; --dim:#8fa3c8; --acc:#ffb02e; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; background: radial-gradient(120% 90% at 50% 30%, #1b2740 0%, #0b0f18 70%); color:var(--txt);
+    font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow:hidden; }
+  body.camfeed { background:#000; }
+  [hidden] { display:none !important; }
+  #cam { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; display:none; z-index:0; }
+  body.camfeed:not(.pov) #cam { display:block; }
+  canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; z-index:1; }
+  #ui { position:fixed; inset:0; pointer-events:none; z-index:2; padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom); }
+  #ui > * { pointer-events:auto; }
+  #topbar { position:absolute; left:16px; right:16px; top:calc(10px + env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; pointer-events:none; }
+  #brand { font-weight:900; letter-spacing:.14em; font-size:13px; text-shadow:0 1px 8px #000; }
+  #brand b { color:var(--acc); }
+  #status { font-size:13px; font-weight:700; color:#dfe9ff; text-shadow:0 1px 6px #000; }
+  #menu { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(92vw,440px); background:var(--panel); border:1px solid var(--line);
+    border-radius:18px; padding:20px 18px 16px; backdrop-filter: blur(10px); text-align:center; }
+  #menu h1 { margin:0 0 4px; font-size:26px; letter-spacing:.04em; }
+  #menu p { margin:6px 0 12px; color:var(--dim); font-size:13.5px; }
+  .btn { appearance:none; border:1px solid var(--line); background:rgba(30,44,76,.88); color:var(--txt); font:600 13.5px system-ui; padding:10px 12px; border-radius:12px; cursor:pointer; min-height:44px; }
+  .btn:active { transform:translateY(1px); background:rgba(60,84,140,.92); }
+  .btn.primary { background:linear-gradient(180deg,#ffbe45,#f08a12); color:#201200; border-color:#ffd37a; }
+  .btn.on { border-color:var(--acc); color:var(--acc); }
+  .btn[disabled] { opacity:.4; cursor:not-allowed; }
+  #menu .btn { display:block; width:100%; margin:8px 0; font-size:14px; }
+  #bar { position:absolute; left:50%; bottom:calc(12px + env(safe-area-inset-bottom)); transform:translateX(-50%); width:min(98vw,760px); display:flex; flex-direction:column; gap:6px; align-items:center; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  #bar .btn { padding:8px 11px; font-size:13px; min-height:42px; background:var(--panel); backdrop-filter: blur(8px); }
+  #bar .btn.on { border-color:var(--acc); color:var(--acc); }
+  #hint { position:absolute; left:50%; top:calc(46px + env(safe-area-inset-top)); transform:translateX(-50%); background:var(--panel); border:1px solid var(--line);
+    padding:9px 14px; border-radius:12px; font-size:13.5px; max-width:min(92vw,520px); text-align:center; pointer-events:none; }
+  #pov { position:absolute; left:50%; top:calc(44px + env(safe-area-inset-top)); transform:translateX(-50%); display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;
+    background:rgba(120,10,16,.78); border:1px solid #ff8a8a; border-radius:14px; padding:6px 8px; max-width:96vw; }
+  #pov span { font-weight:800; font-size:13px; letter-spacing:.03em; padding:0 6px; }
+  #pov .btn { min-height:36px; padding:5px 10px; }
+  body.pov #hint { display:none; }
+  #keys { font-size:11.5px; color:var(--dim); margin-top:8px; }
+  .small { font-size:12px; color:var(--dim); margin:2px 0 0; }
+  kbd { background:#1c2742; border:1px solid var(--line); border-radius:5px; padding:0 5px; font-size:11px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js", "three/addons/": "./lib/addons/" } }
+</script>
+</head>
+<body data-mode="menu">
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="gl"></canvas>
+<div id="ui">
+  <div id="topbar"><div id="brand">TABLE <b>HOCKEY</b></div><div id="status"></div></div>
+
+  <div id="menu">
+    <h1>🏒 Table Hockey</h1>
+    <p>A full hockey game on your table, in your room, or in the air. Pick how you want to see it.</p>
+    <button class="btn primary" id="btnCam">Camera AR · iPhone &amp; any phone</button>
+    <button class="btn" id="btnAR" disabled>Checking WebXR AR…</button>
+    <button class="btn" id="btnVR" disabled>Enter VR</button>
+    <button class="btn" id="btnPreview">Watch on screen</button>
+    <div class="small">Camera AR uses your camera and motion sensors. On an iPhone it follows turning, not walking, so stand in one spot.</div>
+    <div id="keys">On screen: tap a player for their helmet cam · <kbd>H</kbd> helmet · <kbd>P</kbd> replay · <kbd>L</kbd> labels · <kbd>C</kbd> broadcast cam</div>
+  </div>
+
+  <div id="hint" hidden></div>
+  <div id="pov" hidden>
+    <span id="povName">HELMET CAM</span>
+    <button class="btn" data-act="hprev">◀</button><button class="btn" data-act="hnext">▶</button><button class="btn" data-act="hauto">Puck carrier</button><button class="btn" data-act="helmet">Exit</button>
+  </div>
+
+  <div id="bar" hidden>
+    <div class="row" id="more" hidden>
+      <button class="btn" data-act="replay">Replay</button>
+      <button class="btn" data-act="scam">Screen: auto</button>
+      <button class="btn" data-act="boardup">Board ↑</button>
+      <button class="btn" data-act="boarddown">Board ↓</button>
+      <button class="btn" data-act="board">Jumbotron on</button>
+      <button class="btn" data-act="labels">Labels: names</button>
+      <button class="btn" data-act="speed">Speed 1×</button>
+      <button class="btn" data-act="sound">Sound on</button>
+      <button class="btn" data-m="camar" data-act="near">Closer</button>
+      <button class="btn" data-m="camar" data-act="far">Farther</button>
+      <button class="btn" data-m="menu preview" data-act="cam">Broadcast cam</button>
+      <button class="btn" data-act="newgame">New game</button>
+      <button class="btn" data-m="ar vr camar" data-act="exit">Exit</button>
+    </div>
+    <div class="row">
+      <button class="btn" data-m="ar camar" data-act="lock">📌 Lock in place</button>
+      <button class="btn" data-act="smaller">Size −</button>
+      <button class="btn" data-act="bigger">Size +</button>
+      <button class="btn" data-act="down">Height ↓</button>
+      <button class="btn" data-act="up">Height ↑</button>
+      <button class="btn" data-act="rotate">Rotate</button>
+      <button class="btn" data-act="helmet">🪖 Helmet cam</button>
+      <button class="btn" data-act="more">⋯ More</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
