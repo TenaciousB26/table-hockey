@@ -23,9 +23,13 @@ Locally: `cd TableHockey && python3 -m http.server 8000` → `http://localhost:8
 | Quest | Enter VR | Rink floating in front of you in a dark void. |
 | Anything | Watch on screen | Orbit the rink with a mouse/finger. |
 
-**iPhone note.** Safari does not give web pages access to ARKit (the thing Pokémon Go uses; that needs a native app), so Camera AR
-tracks *rotation only*. Stand in one spot and turn on the spot; if you walk, the rink will drift against the room.
-A native ARKit wrapper would fix that. It is the next step if you want true world tracking on iPhone.
+**iPhone / iPad: walking around the rink.** Safari does not give web pages access to ARKit (what Pokémon Go uses), so the phone alone only knows which way it is *pointing*, not where you *stand*. To get real walk-around tracking in Safari the game tracks a **printed marker**:
+1. Open **🖨 Print the marker** from the menu (or `marker.html`) and print it at 100% scale (10 cm default).
+2. Lay it flat in the middle of your table.
+3. Tap **Camera AR** and point the camera at the marker. The badge turns green (**🎯 marker locked**) and the rink is pinned to it. Walk anywhere; if the marker leaves the frame the rink holds its place using the gyro (turning only) until you show it to the camera again.
+4. Set **⋯ More → Marker −/+** to the real size you printed (cm) if it isn't 10.
+
+Without the marker it falls back to turning-only (Aim → **Lock in place**). True marker-less world tracking on iPhone needs a native ARKit app.
 
 ### Placing and sizing (all AR modes)
 1. Aim the phone/headset where the rink should be: on the table, or in the air. It follows the centre of the view (in WebXR it sticks to real surfaces).
@@ -63,6 +67,7 @@ src/fx.js         particles + puck trail
 src/audio.js      synthesised sound
 src/main.js       scene, placement, WebXR, camera AR, UI
 test/sim-test.mjs      `node test/sim-test.mjs 8 150`  plays full games headless
+test/track-test.mjs  renders synthetic marker views and checks the tracker's pose
 test/shootout-test.mjs forces tied OT, runs the shootout and a penalty walk
 ```
 

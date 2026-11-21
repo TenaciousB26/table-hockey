@@ -6,6 +6,7 @@ import { buildRink, roundRect } from './rink.js';
 import { ActorSet } from './actors.js';
 import { Particles, PuckTrail } from './fx.js';
 import { Sound } from './audio.js';
+import { MarkerTracker } from './marker.js';
 import { Jumbotron, ReplaySystem, CAM_ORDER, helmetPose, povTarget } from './jumbotron.js';
 
 const $ = (id) => document.getElementById(id);
@@ -138,7 +139,7 @@ function setMode(m) {
   else if (m === 'camar') setHint('Aim the phone where the rink should be, then tap Lock. Turn on the spot; the phone can’t track walking.');
   else setHint('');
 }
-function updateLockButton() { const b = document.querySelector('[data-act=lock]'); if (b) { b.textContent = locked ? '🔒 Locked' : '📌 Lock in place'; b.classList.toggle('on', locked); } }
+function updateLockButton() { const b = document.querySelector('[data-act=lock]'); if (b) { b.textContent = markerMode ? '🎯 Pinned to marker' : locked ? '🔒 Locked' : '📌 Lock in place'; b.classList.toggle('on', locked || markerMode); } const mb = document.querySelector('[data-act=mbigger]'); if (mb) mb.previousElementSibling.textContent = `Marker − (${(markerSize * 100).toFixed(0)} cm)`; }
 
 // ------------------------------------------------------------------ preview controls (desktop / fallback)
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -149,7 +150,11 @@ const savedView = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
 function fitCamera() {
   camera.aspect = innerWidth / innerHeight;
   if (!isXR()) {
-    if (mode === 'camar') camera.fov = camera.aspect < 1 ? 62 : 2 * Math.atan(Math.tan(31 * Math.PI / 180) / camera.aspect) * 180 / Math.PI; // phone back camera ≈ 62°
+    if (mode === 'camar') {
+      // match the real camera: ~62° across the video's long side, then the 'cover' crop to the screen
+      const vw = video.videoWidth || 1280, vh = video.videoHeight || 720, fv = Math.max(vw, vh) * 0.832, sc = Math.max(innerWidth / vw, innerHeight / vh);
+      camera.fov = 2 * Math.atan((innerHeight / sc / 2) / fv) * 180 / Math.PI;
+    }
     else if (pov.on) camera.fov = 80;
     else camera.fov = camera.aspect < 1 ? Math.min(105, 2 * Math.atan(Math.tan(25 * Math.PI / 180) / camera.aspect) * 180 / Math.PI) : 50;
   }
@@ -176,6 +181,8 @@ function povStep(d) {
 function act(a) {
   sound.init();
   if (a === 'more') { more.hidden = !more.hidden; btn('more').classList.toggle('on', !more.hidden); }
+  else if (a === 'mbigger' || a === 'msmaller') { markerSize = THREE.MathUtils.clamp(markerSize + (a === 'mbigger' ? 0.01 : -0.01), 0.04, 0.5); if (tracker) tracker.size = markerSize; try { localStorage.setItem('th.markerSize', markerSize); } catch (e) { /* ignore */ } updateLockButton(); }
+  else if (a === 'lock' && markerMode) setHint('Pinned to the marker. Keep it on the table; Size, Height and Rotate still adjust the rink.', 3500);
   else if (a === 'lock') { locked = !locked; updateLockButton(); if (locked) setHint('Locked in place. Size, Height and Rotate still adjust it.', 3500); else setHint('Aim again, then Lock.', 2500); }
   else if (a === 'labels') { const m = (actors.labelMode + 1) % 3; actors.setLabelMode(m); btn('labels').textContent = 'Labels: ' + LABEL_NAMES[m]; }
   else if (a === 'speed') { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; btn('speed').textContent = `Speed ${speed}×`; }
@@ -242,6 +249,22 @@ function pickPlayer(cx, cy) {
 
 // ------------------------------------------------------------------ camera AR (iPhone & any phone): camera feed + gyro
 const cam = { stream: null, o: null, got: false, dyaw: 0, dpitch: 0, has: false };
+// marker tracking: the printed marker becomes the world origin, so you can walk around the table
+let tracker = null, markerMode = false, markerSize = 0.10;
+try { markerSize = parseFloat(localStorage.getItem('th.markerSize')) || 0.10; } catch (e) { /* storage blocked */ }
+const trk = { qOff: new THREE.Quaternion(), hasOff: false, pos: new THREE.Vector3(), hasPos: false, qVis: new THREE.Quaternion(), gyroQ: new THREE.Quaternion(), hasGyro: false };
+const _basis = new THREE.Matrix4(), _va = new THREE.Vector3(), _vb = new THREE.Vector3(), _vc = new THREE.Vector3();
+function onMarkerPose(pose) {
+  _va.set(...pose.axes[0]); _vb.set(...pose.axes[1]); _vc.set(...pose.axes[2]);
+  _basis.makeBasis(_va, _vb, _vc); trk.qVis.setFromRotationMatrix(_basis);
+  const target = new THREE.Vector3(...pose.pos);
+  if (!markerMode) {
+    markerMode = true; anchor.set(0, 0, 0); locked = true; yaw = 0; lift = 0; trk.pos.copy(target); trk.hasPos = true; camera.position.copy(target); updateLockButton();
+    setHint('Marker found: the rink is pinned to it. Walk around the table!', 4500);
+  }
+  trk.pos.lerp(target, trk.hasPos ? 0.5 : 1); trk.hasPos = true;
+  if (trk.hasGyro) { const off = trk.qVis.clone().multiply(trk.gyroQ.clone().invert()); if (!trk.hasOff) { trk.qOff.copy(off); trk.hasOff = true; } else trk.qOff.slerp(off, 0.3); }
+}
 const _e = new THREE.Euler(), _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2), _z = new THREE.Vector3(0, 0, 1);
 const onOrient = (e) => { if (e.alpha == null) return; cam.got = true; cam.o = { a: e.alpha * Math.PI / 180, b: e.beta * Math.PI / 180, g: e.gamma * Math.PI / 180 }; };
 async function startCamAR() {
@@ -252,11 +275,15 @@ async function startCamAR() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Camera needs https (or this browser blocks it)');
     cam.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
     video.srcObject = cam.stream; await video.play(); document.body.classList.add('camfeed');
+    video.addEventListener('loadedmetadata', fitCamera); video.addEventListener('resize', fitCamera);
+    tracker = new MarkerTracker(video, { size: markerSize }); tracker.onPose = onMarkerPose;
   } catch (e) { statusEl.textContent = 'No camera: ' + (e.message || e.name) + ' — showing the rink on black'; }
-  cam.has = false; cam.dyaw = 0; cam.dpitch = 0; camera.position.set(0, 0, 0);
-  setMode('camar');
+  cam.has = false; cam.dyaw = 0; cam.dpitch = 0; camera.position.set(0, 0, 0); markerMode = false; trk.hasOff = false; trk.hasPos = false;
+  setMode('camar'); fitCamera();
+  if (tracker) setHint('Lay the marker flat on the table (menu → Print marker), point the camera at it. No marker? Aim and tap Lock: it will follow turning only.', 9000);
 }
 function stopCamAR() {
+  if (tracker) { tracker.stop(); tracker = null; } markerMode = false;
   removeEventListener('deviceorientation', onOrient, true);
   if (cam.stream) for (const t of cam.stream.getTracks()) t.stop();
   cam.stream = null; video.srcObject = null; document.body.classList.remove('camfeed'); cam.got = false;
@@ -264,12 +291,21 @@ function stopCamAR() {
   camera.position.set(0.12, 0.72, 1.18); controls.target.set(0, 0.04, 0); setMode('menu'); controls.update();
 }
 function updateCamAR() {
-  camera.position.set(0, 0, 0);
   if (cam.got && cam.o) {
     const orient = ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180;
     _e.set(cam.o.b, cam.o.a, -cam.o.g, 'YXZ'); const q = new THREE.Quaternion().setFromEuler(_e); q.multiply(_q1); q.multiply(_q0.setFromAxisAngle(_z, -orient));
-    if (!cam.has) { camera.quaternion.copy(q); cam.has = true; } else camera.quaternion.slerp(q, 0.4);
-  } else { camera.rotation.set(cam.dpitch, cam.dyaw, 0, 'YXZ'); }
+    trk.gyroQ.copy(q); trk.hasGyro = true;
+  }
+  if (markerMode) {
+    // marker frame is the world: position from vision; orientation = gyro (smooth, instant) corrected toward vision
+    camera.position.copy(trk.pos);
+    if (trk.hasGyro && trk.hasOff) camera.quaternion.slerp(trk.qOff.clone().multiply(trk.gyroQ), 0.6);
+    else if (tracker && tracker.seenRecently(1500)) camera.quaternion.slerp(trk.qVis, 0.5);
+    return;
+  }
+  camera.position.set(0, 0, 0);
+  if (trk.hasGyro) { if (!cam.has) { camera.quaternion.copy(trk.gyroQ); cam.has = true; } else camera.quaternion.slerp(trk.gyroQ, 0.4); }
+  else { camera.rotation.set(cam.dpitch, cam.dyaw, 0, 'YXZ'); }
 }
 
 // ------------------------------------------------------------------ WebXR (Android Chrome, Quest)
@@ -420,8 +456,10 @@ function renderJumbotron(dt) {
 const povPos = new THREE.Vector3(), povTgt = new THREE.Vector3(); let povInit = false;
 function frame(_t, xrFrame) {
   const dt = Math.min(0.05, clock.getDelta()); tNow += dt; frameN++;
+  if (mode === 'camar' && tracker) tracker.pump();
   if (mode === 'camar' && !pov.on) updateCamAR();
-  if ((mode === 'ar' || mode === 'camar') && !locked) aimPlacement(xrFrame);
+  if (mode === 'camar' && frameN % 12 === 0) { const t = $('trk'); t.hidden = !tracker; if (tracker) { const seen = tracker.seenRecently(700); t.textContent = markerMode ? (seen ? '🎯 marker locked' : '🎯 marker out of view: turning only') : (tracker.failed ? 'marker tracking unavailable' : '🎯 show the marker to the camera'); t.className = markerMode && seen ? 'ok' : 'warn'; } } else if (mode !== 'camar') $('trk').hidden = true;
+  if ((mode === 'ar' || mode === 'camar') && !locked && !markerMode) aimPlacement(xrFrame);
   pollPads(dt);
   applyPlacement();
   wh.sprite.visible = !!wh.text && isXR();

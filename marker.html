@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Hockey marker</title>
+<style>
+  body { margin:0; font:16px/1.4 system-ui,-apple-system,sans-serif; background:#fff; color:#111; }
+  .wrap { max-width:640px; margin:0 auto; padding:16px; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  ol { padding-left:20px; } li { margin:6px 0; }
+  .sizes { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  button { font:600 15px system-ui; padding:10px 14px; border-radius:10px; border:1px solid #888; background:#f2f2f2; min-height:44px; }
+  button.on { background:#111; color:#fff; border-color:#111; }
+  .sheet { display:flex; justify-content:center; margin:16px 0; }
+  #mk { background:#fff; }
+  #mk svg { display:block; width:100%; height:100%; }
+  .note { font-size:13.5px; color:#444; }
+  @media print {
+    .wrap > *:not(.sheet) { display:none !important; }
+    .wrap { padding:0; max-width:none; }
+    .sheet { margin:8mm 0 0; }
+    @page { margin:8mm; }
+  }
+</style>
+<script src="lib/aruco/cv.js"></script>
+<script src="lib/aruco/aruco.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>Table Hockey marker</h1>
+  <ol>
+    <li>Pick a size and <b>print this page at 100% / “Actual size”</b> (turn off “Fit to page”).</li>
+    <li>Measure the <b>black square</b> with a ruler. It should match the size you picked.</li>
+    <li>Lay it flat on the middle of your table. The rink will be centred on it.</li>
+    <li>In the game, open <b>⋯ More</b> and set <b>Marker −/+</b> to the printed size in cm.</li>
+  </ol>
+  <div class="sizes" id="sizes"></div>
+  <div class="sheet"><div id="mk"></div></div>
+  <p class="note">Bigger is steadier from far away. If you can’t print: show this on a tablet at full brightness, lay it flat on the table, measure the black square, and enter that size in the game. Matte paper works better than glossy (less glare).</p>
+</div>
+<script>
+  const d = new AR.Dictionary('ARUCO_MIP_36h12');
+  const svg = d.generateSVG(0);                       // 10 x 10 units: 1 white margin + 8 black square + 1 margin
+  const mk = document.getElementById('mk'), sizes = document.getElementById('sizes');
+  function setSize(mm) {
+    const total = mm * 10 / 8;                         // black square = 8/10 of the artwork
+    mk.style.width = total + 'mm'; mk.style.height = total + 'mm'; mk.innerHTML = svg;
+    for (const b of sizes.children) b.classList.toggle('on', +b.dataset.mm === mm);
+  }
+  for (const mm of [100, 130, 160]) { const b = document.createElement('button'); b.textContent = mm / 10 + ' cm marker'; b.dataset.mm = mm; b.onclick = () => setSize(mm); sizes.appendChild(b); }
+  setSize(100);
+</script>
+</body>
+</html>

@@ -26,6 +26,10 @@
   #topbar { position:absolute; left:16px; right:16px; top:calc(10px + env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; pointer-events:none; }
   #brand { font-weight:900; letter-spacing:.14em; font-size:13px; text-shadow:0 1px 8px #000; }
   #brand b { color:var(--acc); }
+  #trk { font-size:12px; font-weight:700; padding:3px 9px; border-radius:99px; background:rgba(0,0,0,.55); border:1px solid var(--line); }
+  #trk.ok { color:#7dffa0; border-color:#3bd16f; }
+  #trk.warn { color:#ffd27a; border-color:#d9a13b; }
+  #topbar { gap:8px; }
   #status { font-size:13px; font-weight:700; color:#dfe9ff; text-shadow:0 1px 6px #000; }
   #menu { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(92vw,440px); background:var(--panel); border:1px solid var(--line);
     border-radius:18px; padding:20px 18px 16px; backdrop-filter: blur(10px); text-align:center; }
@@ -60,7 +64,7 @@
 <video id="cam" playsinline muted autoplay></video>
 <canvas id="gl"></canvas>
 <div id="ui">
-  <div id="topbar"><div id="brand">TABLE <b>HOCKEY</b></div><div id="status"></div></div>
+  <div id="topbar"><div id="brand">TABLE <b>HOCKEY</b></div><div id="trk" hidden></div><div id="status"></div></div>
 
   <div id="menu">
     <h1>🏒 Table Hockey</h1>
@@ -69,7 +73,8 @@
     <button class="btn" id="btnAR" disabled>Checking WebXR AR…</button>
     <button class="btn" id="btnVR" disabled>Enter VR</button>
     <button class="btn" id="btnPreview">Watch on screen</button>
-    <div class="small">Camera AR uses your camera and motion sensors. On an iPhone it follows turning, not walking, so stand in one spot.</div>
+    <a class="btn" id="btnMarker" href="marker.html" target="_blank" rel="noopener" style="display:block;text-decoration:none;margin:8px 0;font-size:14px;text-align:center;line-height:22px">🖨 Print the marker (to walk around the rink)</a>
+    <div class="small">Camera AR: lay the printed marker flat on your table and the rink pins to it, so you can walk all the way around. Without the marker it only follows turning.</div>
     <div id="keys">On screen: tap a player for their helmet cam · <kbd>H</kbd> helmet · <kbd>P</kbd> replay · <kbd>L</kbd> labels · <kbd>C</kbd> broadcast cam</div>
   </div>
 
@@ -89,6 +94,8 @@
       <button class="btn" data-act="labels">Labels: names</button>
       <button class="btn" data-act="speed">Speed 1×</button>
       <button class="btn" data-act="sound">Sound on</button>
+      <button class="btn" data-m="camar" data-act="msmaller">Marker − (10 cm)</button>
+      <button class="btn" data-m="camar" data-act="mbigger">Marker +</button>
       <button class="btn" data-m="camar" data-act="near">Closer</button>
       <button class="btn" data-m="camar" data-act="far">Farther</button>
       <button class="btn" data-m="menu preview" data-act="cam">Broadcast cam</button>
